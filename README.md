@@ -99,8 +99,16 @@ Only `context`, `question` and `options` are sent to the model.
   *is the summary correct?* (2 options). Overall 77% (chance 50%). Correct summaries are accepted 91%; stale ones are
   caught only 62%, and at 2 updates in 16k–20k logs 0–7% — it accepts the stale summary. Jev is not a usable checker
   for its own state input.
+- **Does it know when it is wrong?** (`python -m test.calibration`, `report/calibration.png`). Every answer comes with
+  probabilities, so we ask whether the chosen option's probability separates right from wrong.
+  - Own integration errors (final state, no summary line): yes. p = 0.85 when right vs 0.64 when wrong, AUROC 0.83,
+    ECE 0.03 — the probabilities are calibrated. Abstaining below p = 0.8 keeps 62% of items at 96% accuracy; below 0.9,
+    48% at 97%. The signal fades when the task is far beyond it: AUROC 0.89 / 0.92 / 0.82 / 0.54 at 2 / 4 / 8 / 16 updates.
+  - Misled by a stale summary: no. p = 0.82 when right vs 0.81 when wrong, AUROC 0.53, ECE 0.28; at 2 updates it is
+    *more* confident when wrong (0.88 vs 0.77, AUROC 0.26). Judging whether a stale summary is correct: AUROC 0.53.
 - **Takeaway:** Jev finds and selects reliably; it does not merge history, it trusts a summary over the raw log, and
-  it cannot reliably check that summary either.
+  it cannot reliably check that summary either. Its confidence flags its own integration failures (usable as an
+  abstain signal) but not a wrong input.
   In an agent loop, hand it a compiled state snapshot, not an appended event list — and the snapshot's correctness
   is the system's ceiling.
 
@@ -128,7 +136,7 @@ To add a model, implement `Adapter.choose(context, question, options) -> Result`
 ```text
 generate/   data generation and validation (common, corpus, retrieval, selection, state, validate)
 data/       generated JSONL (gzipped) + manifest.json
-test/       adapters/ (jev, mock, openai_compat), run.py, analyze.py
+test/       adapters/ (jev, mock, openai_compat), run.py, analyze.py, calibration.py
 results/    <model>/<dataset>.jsonl per-item results, <model>/report/ summary + heatmaps
 corpus/     Paul Graham essays from gkamradt/LLMTest_NeedleInAHaystack, with sha256
 ```
