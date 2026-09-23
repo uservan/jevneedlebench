@@ -27,6 +27,38 @@ Each cell = 10 scenarios × 3 option shuffles. A scenario is reused across all c
 cells differ only in the tested factor. Wrong options always occur in the context; ids are random 5-digit
 numbers with no near-duplicates of the target. `data/manifest.json` holds hashes and generation parameters.
 
+What each test looks like (contexts abbreviated):
+
+```text
+① retrieval (kv)          The access code of user_37874 is code_18405.
+                          ...  the target record sits at 10% / 50% / 90% of 70–1,400 records ...
+                          The access code of user_28195 is code_31340.        ← target
+                          Q: what is the access code of user_28195?
+                          code_20709 | code_31340 ✓ | code_59847 | code_18500
+
+① retrieval (essay)       The world then was divided into two groups, grownups and kids. ...
+                          The access code of user_28195 is code_31340.        ← inserted between paragraphs
+                          Symbols differ from strings in that you can test equality ...
+
+② selection               64 key records scattered in the haystack; 2–64 of their codes offered as options
+                          Q: what is the access code of user_28391?
+                          code_84078 ✓ | code_20405 | code_68467 | ... (up to 64)
+
+③ state: event lookup     Day 38: user_17824 joined project_H.   ... Day 188: user_17824 joined project_A. ...
+                          Q: which project did user_17824 join on day 188?
+                          project_F | project_H | project_A ✓ | project_G
+
+③ state: final state      same log; Q: after the last entry, which projects does user_17824 belong to?
+                          project_E | project_A | project_A, project_E ✓ | (none)
+                          (earlier state) (one update skipped)          (another user's state)
+
+③ snapshot control        same log + "Summary as of the last entry: user_17824 currently belongs to: project_A, project_E."
+                          (correct) or "...: project_A." (stale: last update missing); same final-state question
+
+③ verifier                same log + summary line; Q: is that summary correct?
+                          Correct: the summary matches ... | Incorrect: the summary does not match ...
+```
+
 Item format:
 
 ```json
