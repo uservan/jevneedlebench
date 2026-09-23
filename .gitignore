@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+data/*.jsonl
+results/mock_oracle/
+results/*_pilot16k/

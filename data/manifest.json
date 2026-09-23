@@ -1,0 +1,28 @@
+{
+  "seed": 42,
+  "bases": 10,
+  "repeats": 3,
+  "tokenizer": "tiktoken/o200k_base",
+  "corpus_sha256_list": "84b83f613a080d7c04cb56bc50957feef026eceec511baf7e18506fac581aa86",
+  "generated_utc": "2026-09-23T03:09:44Z",
+  "files": {
+    "h1_retrieval.jsonl": {
+      "n_items": 1170,
+      "sha256": "89b43317f386df2e8c809d60f2c087f7ba876fd89d2ca8b091d4045eee5ba5b4",
+      "dataset_hash": "0274ddf2b8101ee773d905005ec9611d114d529d08fba5a07f03022a11be45f7",
+      "validation_errors": 0
+    },
+    "h2_selection.jsonl": {
+      "n_items": 1080,
+      "sha256": "3876e7885f6dd12df3cfec5cb3fad342d6a8435af3f896d0d0eecbc24e62d142",
+      "dataset_hash": "cb268cb27838b9a30037278ff28e35fd9a94757e37b82e7f30b591b9c48442ba",
+      "validation_errors": 0
+    },
+    "h3_state.jsonl": {
+      "n_items": 1800,
+      "sha256": "060bc252c2ba5ad7c20d07976da9d749384606bfdbbed1804c4d2f6ce97c0c4d",
+      "dataset_hash": "1749c449909b4ae7b1cc2919cfa3f5a3d51d04f27087c40446e3837db9a4037c",
+      "validation_errors": 0
+    }
+  }
+}
