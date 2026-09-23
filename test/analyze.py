@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CELL_KEYS = ["task", "haystack_type", "target_context_tokens", "num_options", "target_position", "target_updates"]
+CELL_KEYS = ["task", "haystack_type", "target_context_tokens", "num_options", "target_position", "target_updates", "snapshot"]
 
 
 def load(results_dir: Path) -> pd.DataFrame:
@@ -28,7 +28,7 @@ def load(results_dir: Path) -> pd.DataFrame:
                 rows.append({"dataset": p.stem, "id": r["id"], "base_id": r["base_id"], "task": r["task"],
                              "haystack_type": c["haystack_type"], "target_context_tokens": c["target_context_tokens"],
                              "num_options": c["num_options"], "target_position": c["target_position"],
-                             "target_updates": c["target_updates"], "status": r["status"], "correct": bool(r["correct"]),
+                             "target_updates": c["target_updates"], "snapshot": c.get("snapshot", "none"), "status": r["status"], "correct": bool(r["correct"]),
                              "p_correct": r.get("p_correct"), "p_chosen": r.get("p_chosen"),
                              "latency_ms": r["latency_ms"], "constructed_tokens": r["constructed_tokens"],
                              "api_input_tokens": (r.get("usage") or {}).get("input_tokens"),
@@ -87,6 +87,7 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
 
 def state_conditional(df: pd.DataFrame) -> pd.DataFrame:
     """P(final_state correct | event_lookup correct) per (length, updates), paired by base and repeat."""
+    df = df[df["snapshot"] == "none"]
     ev = df[df["task"] == "log_event_lookup"].set_index(["base_id", "target_context_tokens", "target_updates", "repeat"])["correct"]
     fs = df[df["task"] == "log_final_state"].set_index(["base_id", "target_context_tokens", "target_updates", "repeat"])["correct"]
     j = pd.concat({"event": ev, "final": fs}, axis=1).dropna()
@@ -141,9 +142,9 @@ def main():
         heatmap(h2, "num_options", "target_context_tokens", "H2 selection: accuracy", out / "h2_selection.png")
         heatmap(h2, "num_options", "target_context_tokens", "H2 selection: accuracy above chance", out / "h2_selection_above_chance.png", value="acc_above_chance")
     for task in ("log_event_lookup", "log_final_state"):
-        g = summary[summary["task"] == task]
-        if len(g):
-            heatmap(g, "target_updates", "target_context_tokens", f"H3 {task}: accuracy", out / f"h3_{task}.png")
+        for snap, g in summary[summary["task"] == task].groupby("snapshot"):
+            suffix = "" if snap == "none" else f"_snapshot_{snap}"
+            heatmap(g, "target_updates", "target_context_tokens", f"H3 {task}{suffix}: accuracy", out / f"h3_{task}{suffix}.png")
     cond = state_conditional(df)
     if len(cond):
         cond.to_csv(out / "h3_conditional.csv", index=False)

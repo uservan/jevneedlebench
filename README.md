@@ -16,6 +16,7 @@ Three heatmaps share the context-length axis (1k → 20k tokens, 28k for natural
 | `data/h1_retrieval.jsonl.gz` | other users' records, or Paul Graham essays | `The access code of user_28195 is code_31340.` | needle position 10 / 50 / 90 % | 1,170 |
 | `data/h2_selection.jsonl.gz` | other users' records | 64 records scattered at random (target + 63 candidate users) | options 2 → 64 | 1,080 |
 | `data/h3_state.jsonl.gz` | other users' day-ordered project logs | the target user's *k* lines: `Day 38: user_17824 joined project_H.` | updates *k* = 1 → 16 | 1,800 |
+| `data/h3_snapshot.jsonl.gz` | as above + a correct or stale state summary line | same | snapshot correct / stale | 1,800 |
 
 `h3` asks two questions per log: **event lookup** (which project did the user join on day N; one line)
 and **final state** (which projects does the user belong to at the end; *k* lines to merge).
@@ -38,7 +39,7 @@ Item format:
 
 Only `context`, `question` and `options` are sent to the model.
 
-## Observations (Jev 1.13.0, 4,050 requests, all `ok`)
+## Observations (Jev 1.13.0, 5,850 requests, all `ok`)
 
 - **Retrieval and selection: 100% in all 75 cells**, correct-option probability 1.0 — up to 20k-token contexts
   (≈30k Jev tokens), 64 options, any needle position, both haystack types.
@@ -56,8 +57,14 @@ Only `context`, `question` and `options` are sent to the model.
 
 - **Errors are stale states:** of 145 wrong final-state answers, 134 are an earlier state of the same user and
   137 are smaller than the correct set — later updates were missed. Users are almost never confused (3 cases).
-- **Takeaway:** Jev finds and selects reliably; it does not merge history. In an agent loop, hand it a compiled
-  state snapshot, not an appended event list.
+- **Snapshot control** (`data/h3_snapshot.jsonl.gz`, `python -m generate.snapshot`): the same final-state items with one
+  line appended to the log, `Summary as of the last entry: user_X currently belongs to: ...`.
+  - *Correct* snapshot: **100% in all 30 cells** (p ≈ 0.97). Jev uses a compiled state.
+  - *Stale* snapshot (the state before the last update): when the stale set is among the options Jev follows the
+    snapshot 61–100% of the time, more so in long logs (68% at 1k → 93% at 20k), even though the log contradicts it.
+- **Takeaway:** Jev finds and selects reliably; it does not merge history, and it trusts a summary over the raw log.
+  In an agent loop, hand it a compiled state snapshot, not an appended event list — and the snapshot's correctness
+  is the system's ceiling.
 
 Per-cell numbers and heatmaps: `results/jev-1.13.0/report/`. Latency p50 ≈ 190 ms; cost ≈ $2 for the whole run.
 Caveat: 10 scenarios per cell, so trends are reliable and individual cells are ±0.2.
