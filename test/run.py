@@ -76,7 +76,7 @@ def run_dataset(adapter, data_path: Path, out_dir: Path, workers: int, limit: in
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--adapter", required=True, choices=["jev", "mock", "openai"])
+    ap.add_argument("--adapter", required=True, choices=["jev", "mock", "openai", "hf"])
     ap.add_argument("--model", default=None)
     ap.add_argument("--mode", default="random", help="mock mode: random|first|oracle")
     ap.add_argument("--data", nargs="+", required=True)

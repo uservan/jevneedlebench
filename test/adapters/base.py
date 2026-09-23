@@ -40,6 +40,9 @@ def load_adapter(name: str, **kw) -> Adapter:
     if name == "mock":
         from .mock import MockAdapter
         return MockAdapter(**kw)
+    if name == "hf":
+        from .hf_logits import HFLogitsAdapter
+        return HFLogitsAdapter(**kw)
     if name == "openai":
         from .openai_compat import OpenAICompatAdapter
         return OpenAICompatAdapter(**kw)
