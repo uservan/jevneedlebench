@@ -108,7 +108,7 @@ def main():
     ax.plot(ks, [auroc(fs[fs.k == k].correct, fs[fs.k == k].p_chosen) for k in ks], "o-", label="own integration")
     ax.plot(ks, [auroc(stale[stale.k == k].correct, stale[stale.k == k].p_chosen) for k in ks], "s--", label="stale summary given")
     ax.axhline(0.5, color="gray", lw=0.8); ax.set_xscale("log", base=2); ax.set_xticks(ks, [str(k) for k in ks])
-    ax.set_xlabel("target updates"); ax.set_ylabel("AUROC (confidence predicts correctness)"); ax.set_ylim(0.4, 1); ax.set_title("Does it know when it is wrong?"); ax.legend(fontsize=8)
+    ax.set_xlabel("target updates"); ax.set_ylabel("AUROC (confidence predicts correctness)"); ax.set_ylim(0.2, 1); ax.set_title("Does it know when it is wrong?"); ax.legend(fontsize=8)
     # selective accuracy
     ax = axes[2]
     ax.plot(sel.coverage, sel.accuracy, "o-")
