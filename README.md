@@ -18,6 +18,7 @@ Three heatmaps share the context-length axis (1k → 20k tokens, 28k for natural
 | `data/h3_state.jsonl.gz` | other users' day-ordered project logs | the target user's *k* lines: `Day 38: user_17824 joined project_H.` | updates *k* = 1 → 16 | 1,800 |
 | `data/h3_snapshot.jsonl.gz` | as above + a correct or stale state summary line | same | snapshot correct / stale | 1,800 |
 | `data/h3_verify.jsonl.gz` | as above; question: is the summary line correct? (2 options) | same | snapshot correct / stale | 1,800 |
+| `data/h3_defer.jsonl.gz` | final state + snapshot + verify items, plus a hand-off option | same | — | 4,500 |
 
 `h3` asks two questions per log: **event lookup** (which project did the user join on day N; one line)
 and **final state** (which projects does the user belong to at the end; *k* lines to merge).
@@ -72,7 +73,7 @@ Item format:
 
 Only `context`, `question` and `options` are sent to the model.
 
-## Observations (Jev 1.13.0, 7,650 requests, all `ok`)
+## Observations (Jev 1.13.0, 12,150 requests)
 
 - **Retrieval and selection: 100% in all 75 cells**, correct-option probability 1.0 — up to 20k-token contexts
   (≈30k Jev tokens), 64 options, any needle position, both haystack types.
@@ -106,13 +107,19 @@ Only `context`, `question` and `options` are sent to the model.
     48% at 97%. The signal fades when the task is far beyond it: AUROC 0.89 / 0.92 / 0.82 / 0.54 at 2 / 4 / 8 / 16 updates.
   - Misled by a stale summary: no. p = 0.82 when right vs 0.81 when wrong, AUROC 0.53, ECE 0.28; at 2 updates it is
     *more* confident when wrong (0.88 vs 0.77, AUROC 0.26). Judging whether a stale summary is correct: AUROC 0.53.
+- **Hand-off option** (`data/h3_defer.jsonl.gz`, `python -m generate.defer`, `python -m test.defer`): the three scenario-3
+  tests again, with one extra option *"Cannot be determined reliably from the log; hand this question to a stronger
+  model"* and a sentence telling the model to pick it when unsure. Jev almost never does: hand-off rate 1% on final
+  state (only at 16 updates, up to 10%), 0% on the snapshot and verifier tests. Of the 145 items it gets wrong without
+  the option, it hands off 3. Answers otherwise stay the same (95% of previously-right items stay right). Its
+  probabilities carry the uncertainty; an explicit abstain option does not trigger it.
 - **Takeaway:** Jev finds and selects reliably; it does not merge history, it trusts a summary over the raw log, and
   it cannot reliably check that summary either. Its confidence flags its own integration failures (usable as an
   abstain signal) but not a wrong input.
   In an agent loop, hand it a compiled state snapshot, not an appended event list — and the snapshot's correctness
   is the system's ceiling.
 
-Per-cell numbers and heatmaps: `results/jev-1.13.0/report/`. Latency p50 ≈ 190 ms; cost ≈ $2 for the whole run.
+Per-cell numbers and heatmaps: `results/jev-1.13.0/report/`. Latency p50 ≈ 190 ms; cost ≈ $6 for everything.
 Caveat: 10 scenarios per cell, so trends are reliable and individual cells are ±0.2.
 
 ## Usage
@@ -136,7 +143,7 @@ To add a model, implement `Adapter.choose(context, question, options) -> Result`
 ```text
 generate/   data generation and validation (common, corpus, retrieval, selection, state, validate)
 data/       generated JSONL (gzipped) + manifest.json
-test/       adapters/ (jev, mock, openai_compat), run.py, analyze.py, calibration.py
+test/       adapters/ (jev, mock, openai_compat), run.py, analyze.py, calibration.py, defer.py
 results/    <model>/<dataset>.jsonl per-item results, <model>/report/ summary + heatmaps
 corpus/     Paul Graham essays from gkamradt/LLMTest_NeedleInAHaystack, with sha256
 ```

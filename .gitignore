@@ -4,3 +4,4 @@ __pycache__/
 data/*.jsonl
 results/mock_oracle/
 results/*_pilot16k/
+data_full/

@@ -14,7 +14,7 @@ import gzip
 import json
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from pathlib import Path
 
 from .adapters.base import load_adapter
@@ -55,9 +55,12 @@ def run_dataset(adapter, data_path: Path, out_dir: Path, workers: int, limit: in
     with open(out_path, "a", encoding="utf-8") as fh, ThreadPoolExecutor(workers) as pool:
         def work(it):
             return it, adapter.choose(it["context"], it["question"], it["options"])
-        for i, (it, res) in enumerate(pool.map(work, todo), 1):
-            if stopped:
-                continue
+        results = pool.map(work, todo)
+        for i in range(1, len(todo) + 1):
+            try:
+                it, res = next(results)
+            except (StopIteration, CancelledError):
+                break
             fh.write(json.dumps(record(it, res), ensure_ascii=False) + "\n"); fh.flush()
             consecutive_errors = consecutive_errors + 1 if res.status == "api_error" else 0
             n_ok += res.status == "ok"

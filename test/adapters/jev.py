@@ -35,7 +35,7 @@ def _load_key() -> str:
 class JevAdapter(Adapter):
     name = "jev"
 
-    def __init__(self, model: str = "jev-1.13.0", timeout_s: float = 120.0, max_429_retries: int = 3):
+    def __init__(self, model: str = "jev-1.13.0", timeout_s: float = 120.0, max_429_retries: int = 5):
         self.model = model
         self.key = _load_key()
         self.timeout_s = timeout_s
@@ -53,8 +53,8 @@ class JevAdapter(Adapter):
             except httpx.HTTPError as exc:
                 return Result("api_error", error=f"{type(exc).__name__}: {exc}"[:300], model=self.model,
                               latency_ms=(time.perf_counter() - t0) * 1000)
-            if resp.status_code == 429 and attempt < self.max_429_retries:
-                time.sleep(1.0 * 2 ** attempt)
+            if resp.status_code in (429, 503, 529) and attempt < self.max_429_retries:
+                time.sleep(2.0 * 2 ** attempt)   # transient: rate limit or overload
                 continue
             break
         latency = (time.perf_counter() - t0) * 1000
