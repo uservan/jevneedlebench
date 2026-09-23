@@ -1,51 +1,41 @@
 # jevneedlebench
 
 A controlled needle-in-a-haystack benchmark for Jev-class decision models (context + candidates → pick one).
-It separates three ways a decision model can fail as the input grows: it cannot **find** the fact,
-it cannot **select** among many candidates, or it cannot **integrate** several updates into a current state.
+It asks where such a model breaks as the input grows — finding a fact, choosing among many candidates, or
+combining several updates into a current state — and whether the model knows when it is wrong.
 
-Every item is a context, a question and 2–64 options; the model returns one option id.
-Answers are computed by a program. Design notes: [DESIGN.md](DESIGN.md).
+Every item is a context, a question and 2–64 options; the model returns one option id, with probabilities when
+it has them. Answers are computed by a program, never by a model. Results below are for **Jev 1.13.0**
+(TypeSafe, `/v1/systemone`), 12,150 requests, about $6. Design notes: [DESIGN.md](DESIGN.md).
 
 ## Data
 
-Three heatmaps share the context-length axis (1k → 20k tokens, 28k for natural text; `o200k_base` counts).
+Three heatmaps share the context-length axis (1k → 20k tokens, 28k for natural text, `o200k_base` counts;
+Jev's own count is ~1.45× for these records, so 20k ≈ 30k Jev tokens, close to its 32k limit).
 
 | File | Filler | Needle | Other axis | Items |
 | --- | --- | --- | --- | --- |
-| `data/h1_retrieval.jsonl.gz` | other users' records, or Paul Graham essays | `The access code of user_28195 is code_31340.` | needle position 10 / 50 / 90 % | 1,170 |
-| `data/h2_selection.jsonl.gz` | other users' records | 64 records scattered at random (target + 63 candidate users) | options 2 → 64 | 1,080 |
-| `data/h3_state.jsonl.gz` | other users' day-ordered project logs | the target user's *k* lines: `Day 38: user_17824 joined project_H.` | updates *k* = 1 → 16 | 1,800 |
-| `data/h3_snapshot.jsonl.gz` | as above + a correct or stale state summary line | same | snapshot correct / stale | 1,800 |
-| `data/h3_verify.jsonl.gz` | as above; question: is the summary line correct? (2 options) | same | snapshot correct / stale | 1,800 |
-| `data/h3_defer.jsonl.gz` | final state + snapshot + verify items, plus a hand-off option | same | — | 4,500 |
+| `h1_retrieval` | other users' records, or Paul Graham essays | one record | needle position 10 / 50 / 90 % | 1,170 |
+| `h2_selection` | other users' records | 64 records scattered at random (target + 63 candidate users) | options 2 → 64 | 1,080 |
+| `h3_state` | other users' day-ordered project logs | the target user's *k* log lines | updates *k* = 1 → 16; two questions per log | 1,800 |
+| `h3_snapshot` | `h3_state` logs + a correct or stale one-line state summary | same | summary correct / stale | 1,800 |
+| `h3_verify` | same; question: is the summary line correct? (2 options) | same | summary correct / stale | 1,800 |
+| `h3_defer` | final-state, snapshot and verify items + a hand-off option | same | — | 4,500 |
 
-`h3` asks two questions per log: **event lookup** (which project did the user join on day N; one line)
-and **final state** (which projects does the user belong to at the end; *k* lines to merge).
-Wrong final-state options are earlier states, one-update-skipped states, or other users' states.
-
-Each cell = 10 scenarios × 3 option shuffles. A scenario is reused across all cells with nested contexts, so
-cells differ only in the tested factor. Wrong options always occur in the context; ids are random 5-digit
-numbers with no near-duplicates of the target. `data/manifest.json` holds hashes and generation parameters.
-
-What each test looks like (contexts abbreviated):
+What the tests look like (contexts abbreviated):
 
 ```text
-① retrieval (kv)          The access code of user_37874 is code_18405.
-                          ...  the target record sits at 10% / 50% / 90% of 70–1,400 records ...
+① retrieval               The access code of user_37874 is code_18405.
+                          ...  the target record sits at 10% / 50% / 90% of 70–1,400 records (or essay paragraphs) ...
                           The access code of user_28195 is code_31340.        ← target
                           Q: what is the access code of user_28195?
                           code_20709 | code_31340 ✓ | code_59847 | code_18500
-
-① retrieval (essay)       The world then was divided into two groups, grownups and kids. ...
-                          The access code of user_28195 is code_31340.        ← inserted between paragraphs
-                          Symbols differ from strings in that you can test equality ...
 
 ② selection               64 key records scattered in the haystack; 2–64 of their codes offered as options
                           Q: what is the access code of user_28391?
                           code_84078 ✓ | code_20405 | code_68467 | ... (up to 64)
 
-③ state: event lookup     Day 38: user_17824 joined project_H.   ... Day 188: user_17824 joined project_A. ...
+③ state: event lookup     Day 38: user_17824 joined project_H.  ...  Day 188: user_17824 joined project_A.  ...
                           Q: which project did user_17824 join on day 188?
                           project_F | project_H | project_A ✓ | project_G
 
@@ -53,14 +43,20 @@ What each test looks like (contexts abbreviated):
                           project_E | project_A | project_A, project_E ✓ | (none)
                           (earlier state) (one update skipped)          (another user's state)
 
-③ snapshot control        same log + "Summary as of the last entry: user_17824 currently belongs to: project_A, project_E."
+   snapshot               same log + "Summary as of the last entry: user_17824 currently belongs to: project_A, project_E."
                           (correct) or "...: project_A." (stale: last update missing); same final-state question
-
-③ verifier                same log + summary line; Q: is that summary correct?
-                          Correct: the summary matches ... | Incorrect: the summary does not match ...
+   verify                 same log + summary line; Q: is that summary correct?   Correct | Incorrect
+   hand-off               any of the above + option "Cannot be determined reliably from the log; hand this question
+                          to a stronger model." and a sentence telling the model to pick it when unsure
 ```
 
-Item format:
+Each cell = 10 scenarios × 3 option shuffles (95% intervals about ±0.2 per cell; trends are reliable, single
+cells are not). A scenario is reused across all cells with nested contexts, so cells differ only in the tested
+factor. Wrong options always occur in the context; ids are random 5-digit numbers with no near-duplicates of the
+target; the log contains only legal operations and every user starts with no projects. `data/manifest.json`
+holds hashes and generation parameters; the shipped `data/*.jsonl.gz` is exactly `--seed 42 --bases 10 --repeats 3`.
+
+Item format (only `context`, `question`, `options` are sent to the model):
 
 ```json
 {"id": "h3_b00_final_state_L1024_k4_r0", "base_id": "h3_b00", "task": "log_final_state",
@@ -71,15 +67,16 @@ Item format:
  "metadata": {"seed": 42, "repeat": 0, "correct_index": 2, "actual_context_tokens": 1020, "final_set_size": 2, ...}}
 ```
 
-Only `context`, `question` and `options` are sent to the model.
+## Findings
 
-## Observations (Jev 1.13.0, 12,150 requests)
+### 1. Finding and selecting: no degradation up to the context limit
 
-- **Retrieval and selection: 100% in all 75 cells**, correct-option probability 1.0 — up to 20k-token contexts
-  (≈30k Jev tokens), 64 options, any needle position, both haystack types.
-- **Event lookup: 100% in all 30 cells.** Finding one line in a 20k log is not a problem.
-- **Final state degrades:** 100% with 1 update; 53–63% with 16 updates. It falls faster with the number of
-  updates than with context length.
+Retrieval (39 cells), selection (36 cells) and event lookup (30 cells) are all **100%**, with the correct option at
+probability ≈ 1.0: 20k-token contexts, 64 options, needles in the middle, record haystacks and essay haystacks alike.
+
+### 2. Combining updates: fails from two updates on
+
+Final state — the same log, but *k* lines must be merged:
 
 | updates \ context | 1k | 2k | 4k | 8k | 16k | 20k |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -89,61 +86,81 @@ Only `context`, `question` and `options` are sent to the model.
 | 8 | 1.00 | 0.73 | 0.77 | 0.73 | 0.77 | 0.70 |
 | 16 | 0.80 | 0.63 | 0.60 | 0.53 | 0.63 | 0.57 |
 
-- **Errors are stale states:** of 145 wrong final-state answers, 134 are an earlier state of the same user and
-  137 are smaller than the correct set — later updates were missed. Users are almost never confused (3 cases).
-- **Snapshot control** (`data/h3_snapshot.jsonl.gz`, `python -m generate.snapshot`): the same final-state items with one
-  line appended to the log, `Summary as of the last entry: user_X currently belongs to: ...`.
-  - *Correct* snapshot: **100% in all 30 cells** (p ≈ 0.97). Jev uses a compiled state.
-  - *Stale* snapshot (the state before the last update): when the stale set is among the options Jev follows the
-    snapshot 61–100% of the time, more so in long logs (68% at 1k → 93% at 20k), even though the log contradicts it.
-- **Verifier test** (`data/h3_verify.jsonl.gz`, `python -m generate.verify`): same logs and summary line, but Jev is asked
-  *is the summary correct?* (2 options). Overall 77% (chance 50%). Correct summaries are accepted 91%; stale ones are
-  caught only 62%, and at 2 updates in 16k–20k logs 0–7% — it accepts the stale summary. Jev is not a usable checker
-  for its own state input.
-- **Does it know when it is wrong?** (`python -m test.calibration`, `report/calibration.png`). Every answer comes with
-  probabilities, so we ask whether the chosen option's probability separates right from wrong.
-  - Own integration errors (final state, no summary line): yes. p = 0.85 when right vs 0.64 when wrong, AUROC 0.83,
-    ECE 0.03 — the probabilities are calibrated. Abstaining below p = 0.8 keeps 62% of items at 96% accuracy; below 0.9,
-    48% at 97%. The signal fades when the task is far beyond it: AUROC 0.89 / 0.92 / 0.82 / 0.54 at 2 / 4 / 8 / 16 updates.
-  - Misled by a stale summary: no. p = 0.82 when right vs 0.81 when wrong, AUROC 0.53, ECE 0.28; at 2 updates it is
-    *more* confident when wrong (0.88 vs 0.77, AUROC 0.26). Judging whether a stale summary is correct: AUROC 0.53.
-- **Hand-off option** (`data/h3_defer.jsonl.gz`, `python -m generate.defer`, `python -m test.defer`): the three scenario-3
-  tests again, with one extra option *"Cannot be determined reliably from the log; hand this question to a stronger
-  model"* and a sentence telling the model to pick it when unsure. Jev almost never does: hand-off rate 1% on final
-  state (only at 16 updates, up to 10%), 0% on the snapshot and verifier tests. Of the 145 items it gets wrong without
-  the option, it hands off 3. Answers otherwise stay the same (95% of previously-right items stay right). Its
-  probabilities carry the uncertainty; an explicit abstain option does not trigger it.
-- **Takeaway:** Jev finds and selects reliably; it does not merge history, it trusts a summary over the raw log, and
-  it cannot reliably check that summary either. Its confidence flags its own integration failures (usable as an
-  abstain signal) but not a wrong input.
-  In an agent loop, hand it a compiled state snapshot, not an appended event list — and the snapshot's correctness
-  is the system's ceiling.
+Of 145 wrong answers, 134 are an earlier state of the same user and 137 are smaller than the correct set: later
+updates are missed. Users are almost never confused (3 cases). The probability on the correct option falls
+earlier than the accuracy (0.87 in cells that are still 100%) and reaches ≈ 0.5 at 16 updates.
 
-Per-cell numbers and heatmaps: `results/jev-1.13.0/report/`. Latency p50 ≈ 190 ms; cost ≈ $6 for everything.
-Caveat: 10 scenarios per cell, so trends are reliable and individual cells are ±0.2.
+### 3. A state summary: used, trusted, not checked
+
+- Append one **correct** summary line to the log → **100% in all 30 cells** (p ≈ 0.97). Jev uses a compiled state.
+- Append a **stale** line (state before the last update) → Jev follows it 61–100% of the time when it is among the
+  options, more so in long logs (68% at 1k → 93% at 20k), although the log contradicts it.
+- Ask *is the summary correct?* → 77% overall (chance 50%). Correct summaries accepted 91%; stale ones caught only
+  62%, and at 2 updates in 16k–20k logs 0–7%.
+
+### 4. Does it know when it is wrong? Only for its own failures, and only implicitly
+
+`python -m test.calibration` (`report/calibration.png`), using the probability of the chosen option:
+
+| condition | p when right | p when wrong | AUROC | ECE |
+| --- | --- | --- | --- | --- |
+| final state, own integration | 0.85 | 0.64 | **0.83** | 0.03 |
+| &nbsp;&nbsp; 2 / 4 / 8 / 16 updates | | | 0.89 / 0.92 / 0.82 / **0.54** | |
+| final state, stale summary given | 0.82 | 0.81 | **0.53** | 0.28 |
+| &nbsp;&nbsp; 2 updates | 0.77 | 0.88 | **0.26** | 0.45 |
+| verify a stale summary | 0.68 | 0.67 | 0.53 | 0.07 |
+
+- For errors it makes itself the probabilities are calibrated: abstaining below p = 0.8 keeps 62% of the items at
+  96% accuracy (p = 0.9: 48% at 97%). When wrong it is usually torn, and the correct option is second in 70% of cases.
+- For errors inherited from a wrong summary there is no signal; at 2 updates it is *more* confident when wrong.
+- The signal fades when the task is far beyond it (AUROC 0.54 at 16 updates).
+- **Hand-off option** (`python -m test.defer`): given an explicit "hand this to a stronger model" option, Jev picks it
+  1% of the time on final state (up to 10% at 16 updates), 0% on the snapshot and verifier tests — 3 of its 145
+  wrong answers. The probability it puts on that option rises with difficulty (0.00 at 1 update → 0.13 at 16) and
+  is inversely related to its own confidence (r = −0.56), but tracks how hard the item looks, not whether it is
+  wrong (at 16 updates: 0.17 on items it gets right, 0.06 on items it gets wrong).
+
+### Takeaway
+
+Jev is a precise selector over a state someone else has compiled. It does not merge history, it trusts a summary
+over the raw log, it cannot check that summary, and it will not decline a question. Its output distribution flags
+its own integration errors — read `p_chosen` and route low-confidence steps elsewhere — but nothing flags a wrong
+input. In an agent loop: hand it a state snapshot, not an event list; the snapshot's correctness is the ceiling.
+
+Per-cell numbers and heatmaps: `results/jev-1.13.0/report/`; hand-off pairs: `results/jev-1.13.0_defer/`.
+Latency p50 ≈ 190 ms, p95 ≈ 500 ms; no request failed except a transient 529 burst (retried).
 
 ## Usage
 
 ```bash
 pip install tiktoken httpx pandas numpy matplotlib
 
-python -m generate --seed 42 --bases 10 --repeats 3 --out data        # regenerate + validate (the shipped data/*.jsonl.gz is this exact run)
-python -m test.run --adapter mock --mode oracle --data data/*.jsonl.gz --out results/mock   # pipeline check, no API
-JEV_API_KEY=... python -m test.run --adapter jev --data data/*.jsonl.gz --out results/jev-1.13.0 --workers 4
-python -m test.analyze --results results/jev-1.13.0                    # summary.csv + heatmaps
+python -m generate --seed 42 --bases 10 --repeats 3 --out data     # h1, h2, h3 + validation (exit 1 on any error)
+python -m generate.snapshot && python -m generate.verify && python -m generate.defer   # derived h3 sets
+
+python -m test.run --adapter mock --mode oracle --data data/*.jsonl.gz --out results/mock     # pipeline check, no API
+JEV_API_KEY=... python -m test.run --adapter jev --data data/h1_retrieval.jsonl.gz data/h2_selection.jsonl.gz \
+    data/h3_state.jsonl.gz data/h3_snapshot.jsonl.gz data/h3_verify.jsonl.gz --out results/jev-1.13.0 --workers 4
+JEV_API_KEY=... python -m test.run --adapter jev --data data/h3_defer.jsonl.gz --out results/jev-1.13.0_defer
+
+python -m test.analyze --results results/jev-1.13.0        # summary.csv + heatmaps
+python -m test.calibration --results results/jev-1.13.0    # calibration.csv + calibration.png
+python -m test.defer                                       # hand-off pairing
 ```
 
-`test.run` resumes (done ids are skipped), never truncates a context, and records `unsupported`
-(over the model's limit), `api_error` and `invalid` separately from wrong answers.
-To add a model, implement `Adapter.choose(context, question, options) -> Result` in `test/adapters/`
-(`openai_compat.py` is a template for chat models). All models see identical items and option order.
+`test.run` resumes (done ids are skipped), never truncates a context, retries 429/503/529 with backoff, and records
+`unsupported` (over the model's limit), `api_error` and `invalid` separately from wrong answers; it stops on
+401/403 or three consecutive API errors. To add a model, implement `Adapter.choose(context, question, options)
+-> Result` in `test/adapters/` (`openai_compat.py` is a template for chat models). All models see identical items
+and option order.
 
 ## Layout
 
 ```text
-generate/   data generation and validation (common, corpus, retrieval, selection, state, validate)
+generate/   common.py corpus.py retrieval.py selection.py state.py validate.py   (python -m generate)
+            snapshot.py verify.py defer.py                                        (derived h3 sets)
 data/       generated JSONL (gzipped) + manifest.json
 test/       adapters/ (jev, mock, openai_compat), run.py, analyze.py, calibration.py, defer.py
-results/    <model>/<dataset>.jsonl per-item results, <model>/report/ summary + heatmaps
+results/    <run>/<dataset>.jsonl per-item results, <run>/report/ summary + figures
 corpus/     Paul Graham essays from gkamradt/LLMTest_NeedleInAHaystack, with sha256
 ```
